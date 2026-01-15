@@ -1,0 +1,6 @@
+{
+  "appId": "com.droidpad.app",
+  "appName": "DroidPad",
+  "webDir": "www",
+  "bundledWebRuntime": false
+}
