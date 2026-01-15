@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>DroidPad</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#6366f1">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+        .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }
+        .note-card { transition: transform 0.1s ease; }
+        .note-card:active { transform: scale(0.98); }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+    <div id="app" class="max-w-md mx-auto min-h-screen flex flex-col">
+        <!-- Header -->
+        <header class="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b px-4 py-4 flex justify-between items-center">
+            <h1 class="text-xl font-bold text-indigo-600">DroidPad</h1>
+            <div class="flex gap-4">
+                <button id="searchBtn" class="p-2 rounded-full hover:bg-slate-100"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></button>
+            </div>
+        </header>
+
+        <!-- Search Bar (Hidden by default) -->
+        <div id="searchBar" class="hidden px-4 py-2 bg-white">
+            <input type="text" id="searchInput" placeholder="Search notes..." class="w-full p-3 bg-slate-100 rounded-xl outline-none border-2 border-transparent focus:border-indigo-400">
+        </div>
+
+        <!-- Notes List -->
+        <main id="notesList" class="flex-1 p-4 grid grid-cols-1 gap-4 overflow-y-auto">
+            <!-- Notes rendered here -->
+        </main>
+
+        <!-- Empty State -->
+        <div id="emptyState" class="hidden flex-1 flex flex-col items-center justify-center opacity-40 p-8 text-center">
+            <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <p class="mt-4 text-lg font-medium">No notes yet</p>
+        </div>
+
+        <!-- Editor Overlay -->
+        <div id="editor" class="fixed inset-0 z-50 bg-white transform translate-y-full transition-transform duration-300 flex flex-col">
+            <div class="p-4 flex justify-between items-center border-b">
+                <button id="closeEditor" class="p-2">Close</button>
+                <span id="editorStatus" class="text-xs text-slate-400">Saved</span>
+                <button id="deleteNote" class="text-red-500 p-2">Delete</button>
+            </div>
+            <input id="noteTitle" type="text" placeholder="Title" class="w-full p-6 text-2xl font-bold outline-none">
+            <textarea id="noteContent" placeholder="Start typing..." class="w-full flex-1 p-6 text-lg outline-none resize-none"></textarea>
+        </div>
+
+        <!-- FAB -->
+        <button id="addBtn" class="fixed bottom-8 right-6 w-14 h-14 bg-indigo-600 text-white rounded-2xl shadow-xl flex items-center justify-center active:scale-90 transition-transform">
+            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+        </button>
+    </div>
+
+    <script>
+        let notes = JSON.parse(localStorage.getItem('notes')) || [];
+        let currentNoteId = null;
+
+        const notesList = document.getElementById('notesList');
+        const emptyState = document.getElementById('emptyState');
+        const editor = document.getElementById('editor');
+        const addBtn = document.getElementById('addBtn');
+        const closeEditor = document.getElementById('closeEditor');
+        const noteTitle = document.getElementById('noteTitle');
+        const noteContent = document.getElementById('noteContent');
+        const searchBtn = document.getElementById('searchBtn');
+        const searchBar = document.getElementById('searchBar');
+        const searchInput = document.getElementById('searchInput');
+        const deleteNoteBtn = document.getElementById('deleteNote');
+
+        function renderNotes(filter = '') {
+            notesList.innerHTML = '';
+            const filtered = notes.filter(n => n.title.toLowerCase().includes(filter.toLowerCase()) || n.content.toLowerCase().includes(filter.toLowerCase()));
+            
+            if (filtered.length === 0) {
+                emptyState.classList.remove('hidden');
+            } else {
+                emptyState.classList.add('hidden');
+                filtered.sort((a,b) => b.updatedAt - a.updatedAt).forEach(note => {
+                    const card = document.createElement('div');
+                    card.className = 'note-card bg-white p-4 rounded-2xl border shadow-sm cursor-pointer';
+                    card.innerHTML = `
+                        <h3 class="font-bold text-slate-800 line-clamp-1">${note.title || 'Untitled'}</h3>
+                        <p class="text-slate-500 text-sm mt-1 line-clamp-2">${note.content || 'No content'}</p>
+                        <div class="mt-3 text-[10px] text-slate-400 uppercase tracking-wider">${new Date(note.updatedAt).toLocaleDateString()}</div>
+                    `;
+                    card.onclick = () => openEditor(note.id);
+                    notesList.appendChild(card);
+                });
+            }
+        }
+
+        function openEditor(id = null) {
+            currentNoteId = id;
+            if (id) {
+                const note = notes.find(n => n.id === id);
+                noteTitle.value = note.title;
+                noteContent.value = note.content;
+                deleteNoteBtn.style.display = 'block';
+            } else {
+                noteTitle.value = '';
+                noteContent.value = '';
+                deleteNoteBtn.style.display = 'none';
+            }
+            editor.classList.remove('translate-y-full');
+        }
+
+        function saveNote() {
+            const title = noteTitle.value;
+            const content = noteContent.value;
+            if (!title && !content) return;
+
+            if (currentNoteId) {
+                const index = notes.findIndex(n => n.id === currentNoteId);
+                notes[index] = { ...notes[index], title, content, updatedAt: Date.now() };
+            } else {
+                const newNote = {
+                    id: Date.now(),
+                    title,
+                    content,
+                    updatedAt: Date.now()
+                };
+                notes.push(newNote);
+                currentNoteId = newNote.id;
+                deleteNoteBtn.style.display = 'block';
+            }
+            localStorage.setItem('notes', JSON.stringify(notes));
+            renderNotes();
+        }
+
+        addBtn.onclick = () => openEditor();
+        closeEditor.onclick = () => editor.classList.add('translate-y-full');
+        
+        deleteNoteBtn.onclick = () => {
+            if(confirm('Delete this note?')) {
+                notes = notes.filter(n => n.id !== currentNoteId);
+                localStorage.setItem('notes', JSON.stringify(notes));
+                renderNotes();
+                editor.classList.add('translate-y-full');
+            }
+        };
+
+        noteTitle.oninput = saveNote;
+        noteContent.oninput = saveNote;
+
+        searchBtn.onclick = () => {
+            searchBar.classList.toggle('hidden');
+            if(!searchBar.classList.contains('hidden')) searchInput.focus();
+        };
+
+        searchInput.oninput = (e) => renderNotes(e.target.value);
+
+        // Initial Render
+        renderNotes();
+
+        // Service Worker registration
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js');
+            });
+        }
+    </script>
+</body>
+</html>
